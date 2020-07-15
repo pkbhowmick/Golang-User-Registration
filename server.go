@@ -1,16 +1,12 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 )
 
-func handler(writer http.ResponseWriter, request *http.Request){
-	fmt.Fprintf(writer, "Hello World")
-
-}
-
 func get(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte (`{"message":"In get method"}`))
@@ -33,8 +29,11 @@ func delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func main(){
-	fmt.Println("Server is running...")
-	http.HandleFunc("/",handler)
+	log.Println("Listening on :8080...")
+	
+	index := http.FileServer(http.Dir("./static"))
+    http.Handle("/", index)
+
 	http.HandleFunc("/api/get",get)
 	http.HandleFunc("/api/post",post)
 	http.HandleFunc("/api/put",put)
