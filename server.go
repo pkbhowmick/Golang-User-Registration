@@ -1,45 +1,106 @@
 package main
 
 import (
+	"context"
+	"time"
 	"log"
 	"net/http"
+	"github.com/gorilla/mux"
+	"encoding/json"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
-func get(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte (`{"message":"In get method"}`))
+
+type User struct{
+	FirstName string `json:"firstname" bson:"firstname"`
+	LastName string `json:"lastname" bson:"lastname"`
+	Email string `json:"email" bson:"email"`
+	Password string `json:"password" bson:"password"`
 }
 
-func post(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte (`{"message":"In post method"}`))
+var client *mongo.Client
+
+func getUsers(response http.ResponseWriter, request *http.Request){
+  response.Header().Set("Content-Type","application/json")
+  var users []User
+  collection:= client.Database("GODB").Collection("user")
+  ctx,_ := context.WithTimeout(context.Background(),10*time.Second)
+  cursor,err:=collection.Find(ctx,bson.M{})
+
+  if err!=nil{
+	  response.WriteHeader(http.StatusInternalServerError)
+	  response.Write([]byte(`{"message":"`+err.Error()+`"}`))
+	  return
+  }
+  defer cursor.Close(ctx)
+  for cursor.Next(ctx){
+	  var user User
+	  cursor.Decode(&user)
+	  users = append(users, user)
+  }
+
+  if err:=cursor.Err(); err!=nil{
+	response.WriteHeader(http.StatusInternalServerError)
+	response.Write([]byte(`{"message":"`+err.Error()+`"}`))
+	return
+  }
+  json.NewEncoder(response).Encode(users)
+
 }
-func put(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.WriteHeader(http.StatusAccepted)
-	w.Write([]byte (`{"message":"In put method"}`))
+
+func getUser(response http.ResponseWriter, request *http.Request){
+  response.Header().Set("Content-Type","application/json")
+  var user User
+  params:= mux.Vars(request)
+  email,_:= params["email"]
+  collection:= client.Database("GODB").Collection("user")
+  ctx,_ := context.WithTimeout(context.Background(),10*time.Second)
+  err:= collection.FindOne(ctx, bson.M{"email":email}).Decode(&user)
+
+  if err!=nil{
+	  response.WriteHeader(http.StatusInternalServerError)
+	  response.Write([]byte(`{"message":"`+err.Error()+`"}`))
+	  return
+  }
+
+  json.NewEncoder(response).Encode(user)
 }
-func delete(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte (`{"message":"In delete method"}`))
+
+func createUser(response http.ResponseWriter, request *http.Request){
+	response.Header().Set("Content-Type","application/json")
+	var user User
+	json.NewDecoder(request.Body).Decode(&user)
+	collection := client.Database("GODB").Collection("user")
+	ctx,_ := context.WithTimeout(context.Background(), 10*time.Second)
+	result,_ := collection.InsertOne(ctx,user)
+	json.NewEncoder(response).Encode(result)
 }
+
+func updateUser(response http.ResponseWriter, request *http.Request){
+	response.Header().Set("Content-Type","application/json")
+}
+
+func deleteUser(response http.ResponseWriter, request *http.Request){
+	response.Header().Set("Content-Type","application/json")
+}
+
+
 
 func main(){
-	log.Println("Listening on :8080...")
-	
-	index := http.FileServer(http.Dir("./static"))
-    http.Handle("/", index)
+	log.Println("Starting the application")
 
-	http.HandleFunc("/api/get",get)
-	http.HandleFunc("/api/post",post)
-	http.HandleFunc("/api/put",put)
-	http.HandleFunc("/api/delete",delete)
-	http.ListenAndServe(":8080", nil)
+	router:= mux.NewRouter()
+	ctx,_ := context.WithTimeout(context.Background(), 10*time.Second)
+	client,_= mongo.Connect(ctx,options.Client().ApplyURI("mongodb://localhost:27017"))
+
+	router.HandleFunc("/api/users",getUsers).Methods("GET")
+	router.HandleFunc("/api/user/{email}",getUser).Methods("GET")
+	router.HandleFunc("/api/user",createUser).Methods("POST")
+	router.HandleFunc("/api/user/{email}",updateUser).Methods("PUT")
+	router.HandleFunc("/api/user/{email}",deleteUser).Methods("DELETE")
+
+	http.ListenAndServe(":8080", router)
+
 }
