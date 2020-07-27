@@ -11,8 +11,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/bson"
 	"golang.org/x/crypto/bcrypt"
+	"github.com/dgrijalva/jwt-go"
 )
 
+
+var SECRET_KEY = []byte("gosecretkey")
 
 type User struct{
 	FirstName string `json:"firstname" bson:"firstname"`
@@ -30,6 +33,19 @@ func getHash(pwd []byte) string {
         log.Println(err)
     }
     return string(hash)
+}
+
+func GenerateJWT()(string,error){
+	token:= jwt.New(jwt.SigningMethodHS256)
+
+	tokenString, err :=  token.SignedString(SECRET_KEY)
+
+	if err !=nil{
+		log.Println("Error in JWT token generation")
+		return "",err
+	}
+
+	return tokenString, nil
 }
 
 
@@ -85,7 +101,14 @@ func userLogin(response http.ResponseWriter, request *http.Request){
 	  response.Write([]byte(`{"response":"Wrong Password!"}`))
 	  return
   }
-  response.Write([]byte(`{"token":"JWT token"}`))
+  jwtToken, err := GenerateJWT()
+  if err != nil{
+	response.WriteHeader(http.StatusInternalServerError)
+	response.Write([]byte(`{"message":"`+err.Error()+`"}`))
+	return
+  }
+  response.Write([]byte(`{"token":"`+jwtToken+`"}`))
+  
 }
 
 func userSignup(response http.ResponseWriter, request *http.Request){
